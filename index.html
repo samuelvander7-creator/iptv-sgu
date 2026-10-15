@@ -1,0 +1,191 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IPTV SGU</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #101522;
+      color: white;
+      font-family: Arial, sans-serif;
+    }
+    header {
+      padding: 24px 18px;
+      background: #192338;
+      border-bottom: 2px solid #28b9d4;
+    }
+    h1 { margin: 0; color: #48d7ef; }
+    header p { color: #b9c5d8; }
+    main { padding: 18px; }
+    input, select, button {
+      width: 100%;
+      padding: 13px;
+      margin: 7px 0;
+      border-radius: 9px;
+      font-size: 16px;
+    }
+    input, select {
+      background: #202b40;
+      color: white;
+      border: 1px solid #43516b;
+    }
+    button {
+      background: #16a6c4;
+      color: #07131c;
+      border: 0;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin: 18px 0;
+    }
+    .category {
+      background: #202b40;
+      border: 1px solid #34435e;
+      border-radius: 12px;
+      padding: 18px 8px;
+      color: white;
+      text-align: center;
+      cursor: pointer;
+    }
+    .category.active { border-color: #48d7ef; }
+    .channel {
+      background: #202b40;
+      padding: 14px;
+      margin: 9px 0;
+      border-radius: 9px;
+    }
+    .muted { color: #aab8ce; font-size: 14px; }
+    video { width: 100%; margin-top: 12px; background: black; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>📺 IPTV SGU</h1>
+    <p>Seu entretenimento em um só lugar</p>
+  </header>
+  <main>
+    <h2>Explore os conteúdos</h2>
+    <div class="grid">
+      <button class="category active" data-cat="TV ao vivo">📡 TV ao vivo</button>
+      <button class="category" data-cat="Filmes">🎬 Filmes</button>
+      <button class="category" data-cat="Séries">📺 Séries</button>
+      <button class="category" data-cat="Documentários">🌎 Documentários</button>
+    </div>
+
+    <h3 id="heading">TV ao vivo</h3>
+    <p class="muted">Adicione uma lista M3U de uma fonte autorizada.</p>
+    <input id="playlist" type="url"
+      placeholder="Endereço da lista M3U (opcional)">
+    <button id="load">Carregar lista</button>
+    <input id="search" type="search"
+      placeholder="🔎 Buscar canal ou conteúdo">
+
+    <div id="status" class="muted">
+      IPTV SGU iniciado. Nenhuma lista carregada.
+    </div>
+    <div id="channels"></div>
+    <video id="player" controls playsinline></video>
+    <p class="muted">
+      A reprodução depende da disponibilidade, autorização e compatibilidade
+      da fonte. Este protótipo não inclui canais pagos.
+    </p>
+  </main>
+
+  <script>
+    const categories = [...document.querySelectorAll(".category")];
+    const heading = document.querySelector("#heading");
+    const listInput = document.querySelector("#playlist");
+    const search = document.querySelector("#search");
+    const channels = document.querySelector("#channels");
+    const status = document.querySelector("#status");
+    const player = document.querySelector("#player");
+    let items = [];
+    let category = "TV ao vivo";
+
+    categories.forEach(button => {
+      button.addEventListener("click", () => {
+        categories.forEach(b => b.classList.remove("active"));
+        button.classList.add("active");
+        category = button.dataset.cat;
+        heading.textContent = category;
+        render();
+      });
+    });
+
+    document.querySelector("#load").addEventListener("click", async () => {
+      const url = listInput.value.trim();
+      if (!url) {
+        status.textContent = "Cole o endereço de uma lista M3U autorizada.";
+        return;
+      }
+      try {
+        status.textContent = "Carregando lista...";
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Não foi possível acessar a lista.");
+        const text = await response.text();
+        const next = [];
+        let name = "";
+        let group = "TV ao vivo";
+        for (const line of text.split(/\r?\n/)) {
+          const s = line.trim();
+          if (s.startsWith("#EXTINF")) {
+            name = s.split(",").slice(1).join(",").trim() || "Conteúdo";
+            const match = s.match(/group-title="([^"]+)"/i);
+            group = match ? match[1] : "TV ao vivo";
+          } else if (s && !s.startsWith("#") && name) {
+            next.push({ name, group, url: s });
+            name = "";
+          }
+        }
+        items = next;
+        status.textContent = items.length
+          ? items.length + " itens encontrados."
+          : "Nenhum item reconhecido na lista.";
+        render();
+      } catch (error) {
+        status.textContent =
+          "Não foi possível carregar. A fonte pode bloquear o acesso pelo navegador.";
+      }
+    });
+
+    function render() {
+      channels.replaceChildren();
+      const query = search.value.toLowerCase();
+      const results = items.filter(item =>
+        item.name.toLowerCase().includes(query) &&
+        (category === "TV ao vivo" ||
+         item.group.toLowerCase().includes(category.toLowerCase()))
+      );
+      results.forEach(item => {
+        const card = document.createElement("div");
+        card.className = "channel";
+        const title = document.createElement("strong");
+        title.textContent = item.name;
+        const play = document.createElement("button");
+        play.textContent = "▶ Assistir";
+        play.addEventListener("click", () => {
+          player.src = item.url;
+          player.play().catch(() => {
+            status.textContent =
+              "Esta transmissão pode exigir outro formato de reprodução.";
+          });
+        });
+        card.append(title, play);
+        channels.append(card);
+      });
+      if (items.length && !results.length) {
+        channels.textContent = "Nenhum conteúdo nesta categoria.";
+      }
+    }
+    search.addEventListener("input", render);
+  </script>
+</body>
+</html>
